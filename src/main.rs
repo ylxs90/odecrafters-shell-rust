@@ -2,6 +2,7 @@ use std::env;
 #[allow(unused_imports)]
 use std::io::{self, Write};
 use std::path::PathBuf;
+use std::process::Command;
 
 fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
@@ -46,8 +47,20 @@ fn main() {
                     }
                 }
             }
-            _ => {
-                println!("{}: command not found", vec[0]);
+            _cmd => {
+                match find(&path, _cmd.to_string()) {
+                    None => {
+                        println!("{}: command not found", vec[0]);
+                    }
+                    Some(cmd) => {
+                        let mut command = Command::new(cmd);
+                        vec[1..].iter().for_each(|arg| {
+                            command.arg(arg);
+                        });
+                        let x = command.output();
+                        print!("{}", String::from_utf8_lossy(x.unwrap().stdout.as_slice()));
+                    }
+                }
             }
         }
     }
@@ -66,6 +79,14 @@ fn find(paths: &Vec<PathBuf>, cmd: String) -> Option<String> {
 
 #[test]
 fn test_find() {
-    let paths:Vec<PathBuf> = vec!["/bin"].iter().map(|s| s.into()).collect();
+    let paths: Vec<PathBuf> = vec!["/bin"].iter().map(|s| s.into()).collect();
     println!("{:?}", find(&paths, "cat".to_string()));
+}
+
+#[test]
+fn test_execute() {
+    let mut command = Command::new("ls");
+    command.arg("-l").arg("-a");
+    let x = command.output();
+    println!("{}", String::from_utf8_lossy(x.unwrap().stdout.as_slice()));
 }
