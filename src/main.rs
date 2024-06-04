@@ -4,8 +4,8 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::Command;
 use std::str::FromStr;
+use homedir::get_my_home;
 
-#[allow(deprecated)]
 fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     // println!("Logs from your program will appear here!");
@@ -33,7 +33,7 @@ fn main() {
             "cd" => {
                 let new_path = vec[1];
                 if new_path == "~" {
-                    current_path = env::home_dir().unwrap();
+                    current_path = get_my_home().unwrap().unwrap();
                 } else if new_path.starts_with("/") {
                     match PathBuf::from_str(new_path) {
                         Ok(new_path) => {
@@ -127,4 +127,5 @@ fn test_execute() {
     let mut path = env::current_dir().unwrap();
     path.push("..");
     println!("{:?}", path.canonicalize().unwrap());
+    println!("{:?}", get_my_home().unwrap().unwrap());
 }
