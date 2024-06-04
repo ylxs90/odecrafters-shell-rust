@@ -3,16 +3,17 @@ use std::env;
 use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::Command;
+use std::str::FromStr;
 
 fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     // println!("Logs from your program will appear here!");
-    let current_path = env::current_dir().unwrap();
+    let mut current_path = env::current_dir().unwrap();
     let path = env::var("PATH").unwrap_or_default();
     let path: Vec<PathBuf> = path.trim().split(":").map(|s| s.into()).collect();
     // println!("{:?}", path);
 
-    let built_in = vec!["echo", "exit", "type", "pwd"];
+    let built_in = vec!["echo", "exit", "type", "pwd", "cd"];
 
     // Uncomment this block to pass the first stage
     loop {
@@ -27,6 +28,21 @@ fn main() {
         match vec[0] {
             "exit" => {
                 break;
+            }
+            "cd" => {
+                let new_path = vec[1];
+                match PathBuf::from_str(new_path) {
+                    Ok(new_path) => {
+                        if new_path.is_file() || new_path.is_dir() {
+                            current_path = new_path;
+                        } else{
+                            println!("cd: {}: No such file or directory", vec[1]);
+                        }
+                    }
+                    Err(_) => {
+                        println!("cd: {new_path}: No such file or directory");
+                    }
+                }
             }
             "pwd" => {
                 println!("{}", current_path.to_str().unwrap());
