@@ -37,11 +37,7 @@ fn main() {
                 } else if new_path.starts_with("/") {
                     match PathBuf::from_str(new_path) {
                         Ok(new_path) => {
-                            if new_path.is_file() || new_path.is_dir() {
-                                current_path = new_path.canonicalize().unwrap();
-                            } else {
-                                println!("cd: {}: No such file or directory", vec[1]);
-                            }
+                            current_path = real_path(new_path, current_path);
                         }
                         Err(_) => {
                             println!("cd: {new_path}: No such file or directory");
@@ -50,11 +46,7 @@ fn main() {
                 } else {
                     let mut temp = current_path.clone();
                     temp.push(new_path);
-                    if temp.is_file() || temp.is_dir() {
-                        current_path = temp.canonicalize().unwrap();
-                    } else {
-                        println!("cd: {}: No such file or directory", vec[1]);
-                    }
+                    current_path = real_path(temp, current_path);
                 }
             }
             "pwd" => {
@@ -107,6 +99,15 @@ fn find(paths: &Vec<PathBuf>, cmd: String) -> Option<String> {
         }
     }
     None
+}
+
+fn real_path(new_path: PathBuf, current_path: PathBuf) -> PathBuf {
+    if new_path.is_file() || new_path.is_dir() {
+        new_path.canonicalize().unwrap()
+    } else {
+        println!("cd: {}: No such file or directory", new_path.to_str().unwrap());
+        current_path
+    }
 }
 
 #[test]
