@@ -7,12 +7,12 @@ use std::process::Command;
 fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     // println!("Logs from your program will appear here!");
-
+    let current_path = env::current_dir().unwrap();
     let path = env::var("PATH").unwrap_or_default();
     let path: Vec<PathBuf> = path.trim().split(":").map(|s| s.into()).collect();
     // println!("{:?}", path);
 
-    let built_in = vec!["echo", "exit", "type"];
+    let built_in = vec!["echo", "exit", "type", "pwd"];
 
     // Uncomment this block to pass the first stage
     loop {
@@ -27,6 +27,9 @@ fn main() {
         match vec[0] {
             "exit" => {
                 break;
+            }
+            "pwd" => {
+                println!("{}", current_path.to_str().unwrap());
             }
             "echo" => {
                 println!("{}", vec[1..].join(" "))
@@ -89,4 +92,6 @@ fn test_execute() {
     command.arg("-l").arg("-a");
     let x = command.output();
     println!("{}", String::from_utf8_lossy(x.unwrap().stdout.as_slice()));
+
+    println!("{}", env::current_dir().unwrap().to_str().unwrap());
 }
