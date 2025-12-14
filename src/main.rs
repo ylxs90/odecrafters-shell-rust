@@ -5,6 +5,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::Command;
 use std::str::FromStr;
+use is_executable::IsExecutable;
 
 fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
@@ -14,7 +15,7 @@ fn main() {
     let path: Vec<PathBuf> = path.trim().split(":").map(|s| s.into()).collect();
     // println!("{:?}", path);
 
-    let built_in = vec!["echo", "exit", "type", "pwd", "cd", "PATH"];
+    let built_in = vec!["echo", "exit", "type", "pwd", "cd"];
 
     // Uncomment this block to pass the first stage
     loop {
@@ -31,9 +32,6 @@ fn main() {
                     continue;
                 }
                 match vec[0] {
-                    "PATH" => {
-
-                    }
                     "exit" => {
                         break;
                     }
@@ -112,7 +110,7 @@ fn find(paths: &Vec<PathBuf>, cmd: String) -> Option<String> {
     for path in paths {
         let mut path = path.clone();
         path.push(cmd.as_str());
-        if path.is_file() {
+        if path.is_file() && path.is_executable() {
             return Some(path.to_str().unwrap().to_string());
         }
     }
