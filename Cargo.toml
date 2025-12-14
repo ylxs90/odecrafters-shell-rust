@@ -6,10 +6,11 @@
 #
 # DON'T EDIT THIS!
 [package]
-name = "shell-starter-rust"
+name = "codecrafters-shell"
 version = "0.1.0"
 authors = ["Codecrafters <hello@codecrafters.io>"]
 edition = "2021"
+rust-version = "1.80"
 
 # DON'T EDIT THIS!
 #
