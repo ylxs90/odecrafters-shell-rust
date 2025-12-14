@@ -14,7 +14,7 @@ fn main() {
     let path: Vec<PathBuf> = path.trim().split(":").map(|s| s.into()).collect();
     // println!("{:?}", path);
 
-    let built_in = vec!["echo", "exit", "type", "pwd", "cd"];
+    let built_in = vec!["echo", "exit", "type", "pwd", "cd", "PATH"];
 
     // Uncomment this block to pass the first stage
     loop {
@@ -31,6 +31,9 @@ fn main() {
                     continue;
                 }
                 match vec[0] {
+                    "PATH" => {
+
+                    }
                     "exit" => {
                         break;
                     }
