@@ -89,7 +89,7 @@ fn main() {
                             if cmd.trim().is_empty() {
                                 continue;
                             }
-                            let mut command = Command::new(cmd);
+                            let mut command = Command::new(_cmd);
                             vec[1..].iter().for_each(|arg| {
                                 command.arg(arg);
                             });
