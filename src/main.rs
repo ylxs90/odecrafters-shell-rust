@@ -174,9 +174,18 @@ fn spilt_input(input: &str) -> Result<Vec<String>> {
                     if !chars.next_if(|c| *c == '\'').is_some() {
                         state = Mode::Normal;
                         push_str_and_clear(&mut current, &mut vec);
+                        continue;
                     }
+
+
                 }
                 _ => {
+                    if chars.next_if(|c| *c == '\\').is_some() {
+                        if let Some(c) = chars.next() {
+                            current.push(c);
+                        }
+                        continue;
+                    }
                     current.push(c);
                 }
             },
@@ -185,16 +194,25 @@ fn spilt_input(input: &str) -> Result<Vec<String>> {
                     if !chars.next_if(|c| *c == '\"').is_some() {
                         state = Mode::Normal;
                         push_str_and_clear(&mut current, &mut vec);
+                        continue;
                     }
+
+
                 }
                 _ => {
+                    if chars.next_if(|c| *c == '\\').is_some() {
+                        if let Some(c) = chars.next() {
+                            current.push(c);
+                        }
+                        continue;
+                    }
                     current.push(c);
                 }
             },
             Mode::Escape => {
                 current.push(c);
                 state = Mode::Normal;
-            },
+            }
         }
     }
 
@@ -275,20 +293,28 @@ fn test_spilt_input() {
 
 #[test]
 fn test_spilt_output() -> Result<()> {
-    let args = spilt_input("  echo 'hello''world'")?;
-    let except = vec!["echo", "helloworld"];
-    assert_eq!(args, except
-        .iter()
-        .map(|s| s.to_string())
-        .collect::<Vec<String>>());
+    let tests = vec![
+        ("  echo 'hello''world'", vec!["echo", "helloworld"]),
+        (
+            r#"echo "world  hello"  "test""shell"#,
+            vec!["echo", "world  hello", "testshell"],
+        ),
+        (
+            r#"echo world\ \ hello  test\nshello"#,
+            vec!["echo", "world  hello", "testnshello"],
+        ),
+        // (
+        //     r#"echo "script'test'\\'shell""#,
+        //     vec!["echo", r#"script'test'\'shell"#],
+        // ),
+    ];
 
-    let args = spilt_input(r#"echo "world  hello"  "test""shell"#)?;
-    assert_eq!(args, vec!["echo".to_string(), "world  hello".to_string(), "testshell".to_string()]);
+    for (src, res) in tests {
+        assert_eq!(
+            spilt_input(src)?,
+            res.iter().map(|s| s.to_string()).collect::<Vec<String>>()
+        );
+    }
 
-
-    let args = spilt_input(r#"echo world\ \ hello  test\nshello"#)?;
-    assert_eq!(args, vec!["echo".to_string(), "world  hello".to_string(), "testnshello".to_string()]);
     Ok(())
-
-
 }
