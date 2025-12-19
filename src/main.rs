@@ -1,3 +1,4 @@
+use anyhow::Result;
 use homedir::get_my_home;
 use is_executable::IsExecutable;
 use std::env;
@@ -6,7 +7,6 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process::Command;
 use std::str::FromStr;
-
 fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     // println!("Logs from your program will appear here!");
@@ -131,76 +131,61 @@ fn real_path(new_path: PathBuf, current_path: PathBuf) -> PathBuf {
 }
 
 // one-line cmd only
-fn spilt_input(input: &str) -> Result<Vec<String>, String> {
-    let mut data = input.trim();
-    if !data.contains('\'') {
-        return Ok(data.split_whitespace().map(|s| s.to_string()).collect());
+fn spilt_input(input: &str) -> Result<Vec<String>> {
+    let data = input.trim();
+
+    enum Mode {
+        Normal,
+        InSingleQuote,
     }
 
-    let mut vec: Vec<String> = Vec::new();
-    // exact cmd
-    if let Some((i, _)) = data.char_indices().find(|(_, ch)| ch.is_whitespace()) {
-        vec.push(data[..i].trim().to_string());
-        data = &data[i + 1..].trim();
-        // println!("cmd: {}", vec[0]);
-        // println!("args: {}", data);
-    }
+    let mut state = Mode::Normal;
+    let mut chars = data.chars().peekable();
+    let mut current = String::new();
+    let mut vec = Vec::new();
 
-    while !data.is_empty() {
-        if let Some((l, _)) = data.char_indices().find(|(_, ch)| *ch == '\'') {
-            if l > 0 {
-                let temp = data[..l].trim();
-                temp.split_whitespace().for_each(|s| vec.push(s.to_string()));
-            }
-
-            if let Some((r, _)) = data.char_indices().skip(l + 1).find(|(_, ch)| *ch == '\'') {
-                // println!("{l} -> {r}");
-                if r - l == 1 {
-                    data = &data[r + 1..];
-                } else {
-                    // deal with double '
-                    if r < data.len() {
-                        if &'\'' == &data[r + 1..r + 2].chars().next().unwrap() {
-                            if let Some((r2, _)) = data
-                                .char_indices()
-                                .skip(r + 2)
-                                .find(|(_, ch)| *ch == '\'' )
-                            {
-                                let temp = &data[l + 1..r2];
-                                let temp = temp.replace("''", "");
-                                vec.push(temp);
-                                data = &data[r2 + 1..];
-                                continue;
-                            } else {
-                                let error = format!(
-                                    r#"
-single quote not matched:
-input:    [{input}]
-error on: [{}]"#,
-                                    &data[l..]
-                                );
-                                return Err(error);
-                            }
+    while let Some(c) = chars.next() {
+        match state {
+            Mode::Normal => match c {
+                '\'' => {
+                    if let Some('\'') = chars.peek() {
+                        chars.next();
+                    } else {
+                        state = Mode::InSingleQuote;
+                        if !current.is_empty() {
+                            vec.push(current.clone());
+                            current = String::new();
                         }
                     }
-
-                    vec.push(data[l + 1..r].to_string());
-                    data = &data[r + 1..];
                 }
-            } else {
-                let error = format!(
-                    r#"
-single quote not matched:
-input:    [{input}]
-error on: [{}]"#,
-                    &data[l..]
-                );
-                return Err(error);
-            }
-        } else {
-            data.split_whitespace().for_each(|s| vec.push(s.to_string()));
-            break;
+                ' ' | '\t' => {
+                    if !current.is_empty() {
+                        vec.push(current.clone());
+                        current = String::new();
+                    }
+                }
+                _ => current.push(c),
+            },
+            Mode::InSingleQuote => match c {
+                '\'' => {
+                    if let Some('\'') = chars.peek() {
+                        chars.next();
+                    } else {
+                        state = Mode::Normal;
+                        if !current.is_empty() {
+                            vec.push(current.clone());
+                            current = String::new();
+                        }
+                    }
+                }
+                _ => {
+                    current.push(c);
+                }
+            },
         }
+    }
+    if !current.is_empty() {
+        vec.push(current.clone());
     }
 
     Ok(vec)
