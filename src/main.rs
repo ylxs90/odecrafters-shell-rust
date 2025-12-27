@@ -15,8 +15,8 @@ fn main() {
     let path: Vec<PathBuf> = path.trim().split(":").map(|s| s.into()).collect();
     // println!("{:?}", path);
 
-    let built_in = vec!["echo", "exit", "type", "pwd", "cd"];
-
+    let built_in = vec!["echo", "exit", "type", "pwd", "cd", "history"];
+    let mut records: Vec<String> = Vec::new();
     // Uncomment this block to pass the first stage
     loop {
         print!("$ ");
@@ -31,8 +31,18 @@ fn main() {
                 let vec = vec.iter().map(String::as_str).collect::<Vec<_>>();
                 if vec.is_empty() {
                     continue;
+                } else {
+                    records.push(input.trim().to_string());
                 }
+
+                if vec.len() > 2 && vec[vec.len() - 2].contains('<') {}
+
                 match vec[0] {
+                    "history" => {
+                        for (i, cmd) in records.iter().enumerate() {
+                            println!("{}  {cmd}", i + 1);
+                        }
+                    }
                     "exit" => {
                         break;
                     }
