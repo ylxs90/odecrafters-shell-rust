@@ -1,6 +1,7 @@
 use anyhow::Result;
 use homedir::get_my_home;
 use is_executable::IsExecutable;
+use std::cmp::min;
 use std::env;
 #[allow(unused_imports)]
 use std::io::{self, Write};
@@ -39,7 +40,14 @@ fn main() {
 
                 match vec[0] {
                     "history" => {
-                        for (i, cmd) in records.iter().enumerate() {
+                        let mut skip = 0;
+                        if vec.len() > 1
+                            && let Ok(n) = vec[1].parse::<usize>()
+                        {
+                            skip = min(records.len() - n, 0);
+                        };
+
+                        for (i, cmd) in records.iter().enumerate().skip(skip) {
                             println!("{}  {cmd}", i + 1);
                         }
                     }
