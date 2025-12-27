@@ -1,13 +1,18 @@
 use anyhow::Result;
+use crossterm::event::{read, Event, KeyCode, KeyModifiers};
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
+use crossterm::{cursor, execute};
 use homedir::get_my_home;
 use is_executable::IsExecutable;
-use std::cmp::max;
+use std::cmp::{max, min};
 use std::env;
+use std::io::Stdout;
 #[allow(unused_imports)]
-use std::io::{self, Write};
+use std::io::{self, stdout, Write};
 use std::path::PathBuf;
 use std::process::Command;
 use std::str::FromStr;
+
 fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     // println!("Logs from your program will appear here!");
@@ -19,14 +24,17 @@ fn main() {
     let built_in = vec!["echo", "exit", "type", "pwd", "cd", "history"];
     let mut records: Vec<String> = Vec::new();
     // Uncomment this block to pass the first stage
+
     loop {
         print!("$ ");
-        io::stdout().flush().unwrap();
+        stdout().flush().unwrap();
 
         // Wait for user input
-        let stdin = io::stdin();
-        let mut input = String::new();
-        stdin.read_line(&mut input).unwrap();
+        let input = read_line_crossterm(&records).unwrap();
+        if input.is_empty() {
+            continue;
+        }
+
         match spilt_input(&input) {
             Ok(vec) => {
                 let vec = vec.iter().map(String::as_str).collect::<Vec<_>>();
@@ -109,6 +117,7 @@ fn main() {
                                 continue;
                             }
                             let mut command = Command::new(_cmd);
+                            command.current_dir(current_path.clone());
                             vec[1..].iter().for_each(|arg| {
                                 command.arg(arg);
                             });
@@ -232,6 +241,79 @@ fn push_str_and_clear(string: &mut String, vec: &mut Vec<String>) {
     }
 }
 
+fn read_line_crossterm(history: &Vec<String>) -> Result<String> {
+    enable_raw_mode()?;
+    let mut stdout = stdout();
+    let mut buffer = String::new();
+    let mut i: i32 = history.len() as i32;
+
+    loop {
+        match read()? {
+            Event::Key(event) => match event.code {
+                KeyCode::Char(c) => {
+                    if event.modifiers == KeyModifiers::CONTROL && c == 'c' {
+                        println!(" ^C");
+                        disable_raw_mode()?;
+                        std::process::exit(1);
+                    } else {
+                        buffer.push(c);
+                        print!("{}", c);
+                        stdout.flush()?;
+                    }
+                }
+                KeyCode::Backspace => {
+                    if !buffer.is_empty() {
+                        buffer.pop();
+                        print!("\x08 \x08");
+                        stdout.flush()?;
+                    }
+                }
+                KeyCode::Enter => {
+                    print!("\r\n");
+                    break;
+                }
+                KeyCode::Up => {
+                    if history.is_empty() {
+                        continue;
+                    }
+                    i = max(0, i - 1);
+
+                    if let Some(cmd) = history.iter().nth(i as usize) {
+                        replace_line(&mut buffer, cmd, &mut stdout)?;
+                    }
+                }
+                KeyCode::Down => {
+                    if history.is_empty() {
+                        continue;
+                    }
+                    i = min(history.len() as i32 - 1, i + 1);
+
+                    if let Some(cmd) = history.iter().nth(i as usize) {
+                        replace_line(&mut buffer, cmd, &mut stdout)?;
+                    }
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+
+    disable_raw_mode()?;
+    Ok(buffer)
+}
+
+fn replace_line(buffer: &mut String, cmd: &String, stdout: &mut Stdout) -> Result<()> {
+    buffer.clear();
+    buffer.push_str(cmd.as_str());
+    execute!(
+        stdout,
+        cursor::MoveToColumn(0),
+        crossterm::terminal::Clear(crossterm::terminal::ClearType::CurrentLine)
+    )?;
+    print!("$ {cmd}");
+    stdout.flush()?;
+    Ok(())
+}
 #[test]
 fn test_find() {
     let paths: Vec<PathBuf> = vec!["/bin"].iter().map(|s| s.into()).collect();
