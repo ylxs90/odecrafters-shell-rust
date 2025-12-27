@@ -6,6 +6,7 @@ use homedir::get_my_home;
 use is_executable::IsExecutable;
 use std::cmp::{max, min};
 use std::env;
+use std::fs::read_to_string;
 use std::io::Stdout;
 #[allow(unused_imports)]
 use std::io::{self, stdout, Write};
@@ -48,12 +49,25 @@ fn main() {
 
                 match vec[0] {
                     "history" => {
+                        if vec.len() > 2 {
+                            match vec[1] {
+                                "-r" => read_to_string(vec[2])
+                                    .unwrap()
+                                    .lines()
+                                    .filter(|l| !l.is_empty())
+                                    .for_each(|l| records.push(l.trim().to_string())),
+                                "-w" => {}
+                                _ => {}
+                            }
+                            continue;
+                        }
+
                         let mut skip = 0;
                         if vec.len() > 1
                             && let Ok(n) = vec[1].parse::<usize>()
                         {
                             skip = max(records.len() - n, 0);
-                        };
+                        }
 
                         for (i, cmd) in records.iter().enumerate().skip(skip) {
                             println!("{}  {cmd}", i + 1);
