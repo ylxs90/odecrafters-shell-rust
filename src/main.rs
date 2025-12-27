@@ -255,6 +255,10 @@ fn read_line_crossterm(history: &Vec<String>) -> Result<String> {
                         println!(" ^C");
                         disable_raw_mode()?;
                         std::process::exit(1);
+                    } else if event.modifiers == KeyModifiers::CONTROL && c == 'j' {
+                        // ctrl + j acts Enter in bash/zsh
+                        print!("\r\n");
+                        break;
                     } else {
                         buffer.push(c);
                         print!("{}", c);
