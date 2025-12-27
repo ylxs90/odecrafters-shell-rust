@@ -94,7 +94,6 @@ fn main() {
                             vec[1..].iter().for_each(|arg| {
                                 command.arg(arg);
                             });
-                            println!("{:?}", command);
                             let x = command.output();
                             print!("{}", String::from_utf8_lossy(x.unwrap().stdout.as_slice()));
                         }
@@ -152,15 +151,13 @@ fn spilt_input(input: &str) -> Result<Vec<String>> {
         match state {
             Mode::Normal => match c {
                 '\'' => {
-                    if !chars.next_if(|c| *c == '\'').is_some() {
+                    if chars.next_if(|c| *c == '\'').is_none() {
                         state = Mode::InSingleQuote;
-                        push_str_and_clear(&mut current, &mut vec);
                     }
                 }
                 '\"' => {
-                    if !chars.next_if(|c| *c == '\"').is_some() {
+                    if chars.next_if(|c| *c == '\"').is_none() {
                         state = Mode::InDoubleQuote;
-                        push_str_and_clear(&mut current, &mut vec);
                     }
                 }
                 ' ' | '\t' => {
@@ -173,7 +170,7 @@ fn spilt_input(input: &str) -> Result<Vec<String>> {
             },
             Mode::InSingleQuote => match c {
                 '\'' => {
-                    if !chars.next_if(|c| *c == '\'').is_some() {
+                    if chars.next_if(|c| *c == '\'').is_none() {
                         state = Mode::Normal;
                     }
                 }
@@ -183,12 +180,14 @@ fn spilt_input(input: &str) -> Result<Vec<String>> {
             },
             Mode::InDoubleQuote => match c {
                 '\"' => {
-                    if !chars.next_if(|c| *c == '\"').is_some() {
+                    if chars.next_if(|c| *c == '\"').is_none() {
                         state = Mode::Normal;
                     }
                 }
                 '\\' => {
-                    if let Some(c) = chars.next() {
+                    if let Some(ch) = chars.next_if(|ch| ['$', '\\', '"'].contains(ch)) {
+                        current.push(ch);
+                    } else {
                         current.push(c);
                     }
                 }
