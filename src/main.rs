@@ -16,6 +16,8 @@ use std::{env, fs};
 
 use std::os::fd::{AsRawFd, RawFd};
 
+mod trie;
+
 fn main() {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     // println!("Logs from your program will appear here!");
@@ -27,6 +29,13 @@ fn main() {
     let built_in = vec!["echo", "exit", "type", "pwd", "cd", "history"];
     let mut records: Vec<String> = Vec::new();
     // Uncomment this block to pass the first stage
+
+    let mut cmd_list: Vec<String> = built_in.iter().map(|s| s.to_string()).collect();
+
+    build_complete_dictionary(&path)
+        .unwrap_or_default()
+        .iter()
+        .for_each(|c| cmd_list.push(c.to_string()));
 
     let history_file = env::var("HISTFILE");
     match history_file.clone() {
@@ -47,7 +56,7 @@ fn main() {
         stdout().flush().unwrap();
 
         // Wait for user input
-        let input = read_line_crossterm(&records).unwrap();
+        let input = read_line_crossterm(&records, &cmd_list).unwrap();
         if input.is_empty() {
             continue;
         }
@@ -69,7 +78,6 @@ fn main() {
                     } else {
                         records.push(input.trim().to_string());
                     }
-
 
                     match cmd.command().as_str() {
                         "history" => {
@@ -354,7 +362,7 @@ fn push_str_and_clear(string: &mut String, vec: &mut Vec<String>) {
     }
 }
 
-fn read_line_crossterm(history: &Vec<String>) -> Result<String> {
+fn read_line_crossterm(history: &[String], cmd_list: &[String]) -> Result<String> {
     enable_raw_mode()?;
     let mut stdout = stdout();
     let mut buffer = String::new();
@@ -410,6 +418,11 @@ fn read_line_crossterm(history: &Vec<String>) -> Result<String> {
                     }
                 }
                 KeyCode::Left | KeyCode::Right => {}
+                KeyCode::Tab => {
+                    if let Some(cmd) = cmd_list.iter().find(|c| c.starts_with(&buffer)) {
+                        replace_line(&mut buffer, cmd, &mut stdout)?;
+                    }
+                }
                 _ => {}
             },
             _ => {}
@@ -517,6 +530,10 @@ enum RedirectOp {
 enum AstNode {
     Command(CommandSpec),
     Pipeline(Vec<CommandSpec>),
+}
+
+fn build_complete_dictionary(_paths: &[PathBuf]) -> Result<Vec<String>, String> {
+    Ok(vec![])
 }
 
 #[test]
