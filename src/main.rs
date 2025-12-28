@@ -421,6 +421,9 @@ fn read_line_crossterm(history: &[String], cmd_list: &[String]) -> Result<String
                 KeyCode::Tab => {
                     if let Some(cmd) = cmd_list.iter().find(|c| c.starts_with(&buffer)) {
                         replace_line(&mut buffer, &format!("{cmd} "), &mut stdout)?;
+                    } else {
+                        print!("{}", '\x07');
+                        stdout.flush()?;
                     }
                 }
                 _ => {}
