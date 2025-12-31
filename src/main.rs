@@ -82,8 +82,7 @@ fn main() {
                     Ok(node) => match node {
                         AstNode::Command(cmd) => {
                             let saved_fds = apply_redirects(&cmd.redirects).unwrap();
-                            let result =
-                                execute_cmd(cmd, &mut records, &history_file, &path);
+                            let result = execute_cmd(cmd, &mut records, &history_file, &path);
                             restore_redirects(&saved_fds).unwrap();
 
                             match result {
@@ -107,14 +106,120 @@ fn main() {
                                     dup2(write_fd, 1).unwrap(); // redirect stdout to pipe write end
                                     close(read_fd).unwrap();
                                     close(write_fd).unwrap();
-                                    let x: Vec<CString> = cmd
-                                        .argv
-                                        .iter()
-                                        .map(|s| CString::from_str(s).unwrap())
-                                        .collect();
+                                    let argv = &cmd.argv[1..];
+                                    if cmd.is_built_in() {
+                                        match cmd.command().as_str() {
+                                            "history" => {
+                                                if argv.len() > 2 {
+                                                    match argv[1].as_str() {
+                                                        "-r" => read_to_string(&argv[2])
+                                                            .unwrap()
+                                                            .lines()
+                                                            .filter(|l| !l.is_empty())
+                                                            .for_each(|l| {
+                                                                records.push(l.trim().to_string())
+                                                            }),
+                                                        "-w" => {
+                                                            let mut history = records.join("\n");
+                                                            history.push('\n');
+                                                            fs::write(&argv[2], history).unwrap();
+                                                        }
+                                                        "-a" => {
+                                                            let mut file = OpenOptions::new()
+                                                                .append(true)
+                                                                .open(&argv[2])
+                                                                .unwrap();
+                                                            let mut history = records.join("\n");
+                                                            history.push('\n');
+                                                            write!(file, "{}", history).unwrap();
+                                                            records.clear();
+                                                        }
+                                                        _ => {}
+                                                    }
+                                                    continue;
+                                                }
 
-                                    let c = CString::from_str(cmd.command().as_str()).unwrap();
-                                    execvp(&c, &x).unwrap();
+                                                let mut skip = 0;
+                                                if argv.len() > 1
+                                                    && let Ok(n) = argv[1].parse::<usize>()
+                                                {
+                                                    skip = max(records.len() - n, 0);
+                                                }
+
+                                                for (i, cmd) in
+                                                    records.iter().enumerate().skip(skip)
+                                                {
+                                                    println!("{}  {cmd}", i + 1);
+                                                }
+                                            }
+                                            "exit" => {
+                                                match history_file {
+                                                    Ok(history_file) => {
+                                                        let mut history = records.join("\n");
+                                                        history.push('\n');
+                                                        fs::write(history_file, history).unwrap();
+                                                    }
+                                                    Err(_) => {}
+                                                }
+                                                break;
+                                            }
+                                            "cd" => {
+                                                let new_path = argv[1].clone();
+                                                if new_path == "~" {
+                                                    env::set_current_dir(env::home_dir().unwrap())
+                                                        .unwrap();
+                                                } else if new_path.starts_with("/") {
+                                                    match env::set_current_dir(new_path.clone()) {
+                                                        Ok(_) => {}
+                                                        Err(_) => {
+                                                            eprintln!(
+                                                                "cd: {new_path}: No such file or directory"
+                                                            );
+                                                        }
+                                                    };
+                                                } else {
+                                                    let mut temp = env::current_dir().unwrap();
+                                                    temp.push(new_path.clone());
+                                                    match env::set_current_dir(temp) {
+                                                        Ok(_) => {}
+                                                        Err(_) => {
+                                                            eprintln!(
+                                                                "cd: {new_path}: No such file or directory"
+                                                            );
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            "pwd" => {
+                                                println!(
+                                                    "{}",
+                                                    env::current_dir().unwrap().to_str().unwrap()
+                                                );
+                                            }
+                                            "echo" => {
+                                                println!("{}", argv[1..].join(" "))
+                                            }
+                                            "type" => {
+                                                if argv.len() < 2 {
+                                                    eprintln!("no argument after type");
+                                                    continue;
+                                                }
+
+                                                println!("{} is a shell builtin", argv[1]);
+                                            }
+                                            _ => {}
+                                        }
+                                    } else {
+                                        let x: Vec<CString> = cmd
+                                            .argv
+                                            .iter()
+                                            .map(|s| CString::from_str(s).unwrap())
+                                            .collect();
+
+                                        let c = CString::from_str(cmd.command().as_str()).unwrap();
+                                        execvp(&c, &x).unwrap();
+                                    }
+
                                     unreachable!();
                                 }
                                 _ => {}
@@ -127,14 +232,120 @@ fn main() {
                                     // child process: first command
                                     dup2(read_fd, 0).unwrap(); // redirect stdout to pipe write end
                                     close(write_fd).unwrap();
-                                    let x: Vec<CString> = cmd
-                                        .argv
-                                        .iter()
-                                        .map(|s| CString::from_str(s).unwrap())
-                                        .collect();
+                                    let argv = &cmd.argv[1..];
+                                    if cmd.is_built_in() {
+                                        match cmd.command().as_str() {
+                                            "history" => {
+                                                if argv.len() > 2 {
+                                                    match argv[1].as_str() {
+                                                        "-r" => read_to_string(&argv[2])
+                                                            .unwrap()
+                                                            .lines()
+                                                            .filter(|l| !l.is_empty())
+                                                            .for_each(|l| {
+                                                                records.push(l.trim().to_string())
+                                                            }),
+                                                        "-w" => {
+                                                            let mut history = records.join("\n");
+                                                            history.push('\n');
+                                                            fs::write(&argv[2], history).unwrap();
+                                                        }
+                                                        "-a" => {
+                                                            let mut file = OpenOptions::new()
+                                                                .append(true)
+                                                                .open(&argv[2])
+                                                                .unwrap();
+                                                            let mut history = records.join("\n");
+                                                            history.push('\n');
+                                                            write!(file, "{}", history).unwrap();
+                                                            records.clear();
+                                                        }
+                                                        _ => {}
+                                                    }
+                                                    continue;
+                                                }
 
-                                    let c = CString::from_str(cmd.command().as_str()).unwrap();
-                                    execvp(&c, &x).unwrap();
+                                                let mut skip = 0;
+                                                if argv.len() > 1
+                                                    && let Ok(n) = argv[1].parse::<usize>()
+                                                {
+                                                    skip = max(records.len() - n, 0);
+                                                }
+
+                                                for (i, cmd) in
+                                                    records.iter().enumerate().skip(skip)
+                                                {
+                                                    println!("{}  {cmd}", i + 1);
+                                                }
+                                            }
+                                            "exit" => {
+                                                match history_file {
+                                                    Ok(history_file) => {
+                                                        let mut history = records.join("\n");
+                                                        history.push('\n');
+                                                        fs::write(history_file, history).unwrap();
+                                                    }
+                                                    Err(_) => {}
+                                                }
+                                                break;
+                                            }
+                                            "cd" => {
+                                                let new_path = argv[1].clone();
+                                                if new_path == "~" {
+                                                    env::set_current_dir(env::home_dir().unwrap())
+                                                        .unwrap();
+                                                } else if new_path.starts_with("/") {
+                                                    match env::set_current_dir(new_path.clone()) {
+                                                        Ok(_) => {}
+                                                        Err(_) => {
+                                                            eprintln!(
+                                                                "cd: {new_path}: No such file or directory"
+                                                            );
+                                                        }
+                                                    };
+                                                } else {
+                                                    let mut temp = env::current_dir().unwrap();
+                                                    temp.push(new_path.clone());
+                                                    match env::set_current_dir(temp) {
+                                                        Ok(_) => {}
+                                                        Err(_) => {
+                                                            eprintln!(
+                                                                "cd: {new_path}: No such file or directory"
+                                                            );
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            "pwd" => {
+                                                println!(
+                                                    "{}",
+                                                    env::current_dir().unwrap().to_str().unwrap()
+                                                );
+                                            }
+                                            "echo" => {
+                                                println!("{}", argv[1..].join(" "))
+                                            }
+                                            "type" => {
+                                                if argv.len() < 2 {
+                                                    eprintln!("no argument after type");
+                                                    continue;
+                                                }
+
+                                                println!("{} is a shell builtin", argv[1]);
+                                            }
+                                            _ => {}
+                                        }
+                                    } else {
+                                        let x: Vec<CString> = cmd
+                                            .argv
+                                            .iter()
+                                            .map(|s| CString::from_str(s).unwrap())
+                                            .collect();
+
+                                        let c = CString::from_str(cmd.command().as_str()).unwrap();
+                                        execvp(&c, &x).unwrap();
+                                    }
+
                                     unreachable!();
                                 }
                                 _ => {}
@@ -630,6 +841,10 @@ struct CommandSpec {
 impl CommandSpec {
     pub fn command(&self) -> String {
         self.argv[0].clone()
+    }
+
+    pub fn is_built_in(&self) -> bool {
+        BUILT_IN.contains(&self.command().as_str())
     }
 }
 
