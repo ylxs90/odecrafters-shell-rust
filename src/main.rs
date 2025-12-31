@@ -83,7 +83,7 @@ fn main() {
                         AstNode::Command(cmd) => {
                             let saved_fds = apply_redirects(&cmd.redirects).unwrap();
                             let result =
-                                execute_cmd(cmd, &mut records, &input, &history_file, &path);
+                                execute_cmd(cmd, &mut records, &history_file, &path);
                             restore_redirects(&saved_fds).unwrap();
 
                             match result {
@@ -167,7 +167,6 @@ enum ExecResult {
 fn execute_cmd(
     cmd: CommandSpec,
     records: &mut Vec<String>,
-    input: &String,
     history_file: &Result<String, std::env::VarError>,
     path: &Vec<PathBuf>,
 ) -> ExecResult {
