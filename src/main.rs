@@ -20,7 +20,6 @@ use std::str::FromStr;
 use std::string::ToString;
 use std::{env, fs};
 
-mod trie;
 
 const BUILT_IN: &[&str] = &["echo", "exit", "type", "pwd", "cd", "history"];
 
