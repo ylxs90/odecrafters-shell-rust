@@ -1,25 +1,24 @@
 use crate::ExecResult::{Continue, Exit};
 use anyhow::Result;
-use crossterm::event::{Event, KeyCode, KeyModifiers, read};
+use crossterm::event::{read, Event, KeyCode, KeyModifiers};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use crossterm::{cursor, execute};
 use is_executable::IsExecutable;
 use nix::sys::wait::waitpid;
-use nix::unistd::{ForkResult, close, dup2, execvp, fork, pipe};
+use nix::unistd::{close, dup2, execvp, fork, pipe, ForkResult};
 use std::cmp::{max, min};
 use std::collections::HashSet;
 use std::ffi::CString;
-use std::fs::{OpenOptions, read_dir, read_to_string};
+use std::fs::{read_dir, read_to_string, OpenOptions};
 use std::io::Stdout;
 #[allow(unused_imports)]
-use std::io::{self, Write, stdout};
+use std::io::{self, stdout, Write};
 use std::os::fd::{AsRawFd, RawFd};
 use std::path::PathBuf;
 use std::process::Command;
 use std::str::FromStr;
 use std::string::ToString;
 use std::{env, fs};
-
 
 const BUILT_IN: &[&str] = &["echo", "exit", "type", "pwd", "cd", "history"];
 
@@ -737,47 +736,76 @@ fn read_line_crossterm(history: &[String], cmd_list: &[String]) -> Result<String
                     }
                     KeyCode::Left | KeyCode::Right => {}
                     KeyCode::Tab => {
-                        let mut matched_list: HashSet<&String> = HashSet::new();
-                        cmd_list
-                            .iter()
-                            .filter(|c| c.starts_with(&buffer))
-                            .for_each(|c| {
-                                matched_list.insert(c);
-                            });
+                        if buffer.starts_with("./") {
+                            let dir = env::current_dir().unwrap();
+                            let cmds: Vec<String> = read_dir(&dir)?
+                                .into_iter()
+                                .filter(Result::is_ok)
+                                .map(Result::unwrap)
+                                .filter(|p| {
+                                    let p = p.path();
+                                    p.is_file() && p.is_executable()
+                                })
+                                .map(|p| p.file_name().to_str().unwrap().to_string())
+                                .map(|f| {
+                                    let mut f = f.clone();
+                                    f.insert_str(0, "./");
+                                    f
+                                })
+                                .filter(|s| s.starts_with(&buffer))
+                                .collect();
 
-                        if matched_list.is_empty() {
-                            print!("{}", '\x07');
-                            stdout.flush()?;
-                        } else {
-                            let mut matched_list: Vec<&String> =
-                                matched_list.iter().map(|s| *s).collect();
-                            let cmd = longest_common_prefix(&matched_list);
-                            if buffer != cmd {
-                                replace_line(
-                                    &mut buffer,
-                                    &format!(
-                                        "{cmd}{}",
-                                        if matched_list.len() == 1 { " " } else { "" }
-                                    ),
-                                    &mut stdout,
-                                )?;
+                            let cmd = longest_common_prefix(&cmds);
+                            if cmd == buffer && cmds.len() > 1 {
+                                let list = cmds.join(" ");
+                                print!("\r\n{list}\r\n$ {buffer}");
+                                stdout.flush()?;
                             } else {
-                                if is_last_tab_pressed {
-                                    matched_list.sort();
-                                    let mut iter = matched_list.iter().peekable();
-                                    let mut list = String::new();
-                                    iter.clone().for_each(|s| {
-                                        list.push_str(s);
-                                        if iter.peek().is_some() {
-                                            list.push_str("  ");
-                                        }
-                                    });
-                                    print!("\r\n{list}\r\n$ {buffer}");
-                                    stdout.flush()?;
+                                replace_line(&mut buffer, &cmd, &mut stdout)?;
+                            }
+                        } else {
+                            let mut matched_list: HashSet<&String> = HashSet::new();
+                            cmd_list
+                                .iter()
+                                .filter(|c| c.starts_with(&buffer))
+                                .for_each(|c| {
+                                    matched_list.insert(c);
+                                });
+
+                            if matched_list.is_empty() {
+                                print!("{}", '\x07');
+                                stdout.flush()?;
+                            } else {
+                                let mut matched_list: Vec<&String> =
+                                    matched_list.iter().map(|s| *s).collect();
+                                let cmd = longest_common_prefix(&matched_list);
+                                if buffer != cmd {
+                                    replace_line(
+                                        &mut buffer,
+                                        &format!(
+                                            "{cmd}{}",
+                                            if matched_list.len() == 1 { " " } else { "" }
+                                        ),
+                                        &mut stdout,
+                                    )?;
                                 } else {
-                                    print!("\x07");
-                                    stdout.flush()?;
-                                    is_last_tab_pressed = true;
+                                    if is_last_tab_pressed {
+                                        matched_list.sort();
+                                        let mut iter = matched_list.iter().peekable();
+                                        let mut list = String::new();
+                                        iter.clone().for_each(|s| {
+                                            list.push_str(s);
+                                            if iter.peek().is_some() {
+                                                list.push_str("  ");
+                                            }
+                                        });
+                                        print!("\r\n{list}\r\n$ {buffer}");
+                                        stdout.flush()?;
+                                    } else {
+                                        print!("\x07");
+                                        stdout.flush()?;
+                                        is_last_tab_pressed = true;
+                                    }
                                 }
                             }
                         }
@@ -806,18 +834,18 @@ fn replace_line(buffer: &mut String, cmd: &String, stdout: &mut Stdout) -> Resul
     Ok(())
 }
 
-fn longest_common_prefix(items: &[&String]) -> String {
+fn longest_common_prefix<T: AsRef<str>>(items: &[T]) -> String {
     if items.is_empty() {
         return String::new();
     }
 
-    let mut prefix = items[0].clone();
+    let mut prefix = items[0].as_ref().to_string();
 
     for s in &items[1..] {
         let mut i = 0;
-        let max = prefix.len().min(s.len());
+        let max = prefix.len().min(s.as_ref().len());
 
-        while i < max && prefix.as_bytes()[i] == s.as_bytes()[i] {
+        while i < max && prefix.as_bytes()[i] == s.as_ref().as_bytes()[i] {
             i += 1;
         }
 
@@ -957,241 +985,251 @@ fn build_complete_dictionary(paths: &[PathBuf]) -> Result<Vec<String>, String> {
     Ok(cmds)
 }
 
-#[test]
-fn test_find() {
-    let paths: Vec<PathBuf> = vec!["/bin"].iter().map(|s| s.into()).collect();
-    println!("{:?}", find(&paths, "cat".to_string()));
-}
+#[cfg(test)]
+mod tests {
+    use crate::{find, spilt_input, AstNode};
+    use nix::sys::wait::waitpid;
+    use nix::unistd::{close, dup2, execvp, fork, pipe, ForkResult};
+    use std::env;
+    use std::path::PathBuf;
+    use std::process::Command;
 
-#[test]
-fn test_execute() {
-    use homedir::get_my_home;
-    let mut command = Command::new("ls");
-    command.arg("-l").arg("-a");
-    let x = command.output();
-    println!("{}", String::from_utf8_lossy(x.unwrap().stdout.as_slice()));
+    #[test]
+    fn test_find() {
+        let paths: Vec<PathBuf> = vec!["/bin"].iter().map(|s| s.into()).collect();
+        println!("{:?}", find(&paths, "cat".to_string()));
+    }
 
-    println!("{}", env::current_dir().unwrap().to_str().unwrap());
-    let mut path = env::current_dir().unwrap();
-    path.push("..");
-    println!("{:?}", path.canonicalize().unwrap());
-    println!("{:?}", get_my_home().unwrap().unwrap());
-}
+    #[test]
+    fn test_execute() {
+        use homedir::get_my_home;
+        let mut command = Command::new("ls");
+        command.arg("-l").arg("-a");
+        let x = command.output();
+        println!("{}", String::from_utf8_lossy(x.unwrap().stdout.as_slice()));
 
-#[test]
-fn test_spilt_input() {
-    let args = spilt_input("  echo 'hello    world' demo ni hao'nice to meet you' hxiao");
-    match args {
-        Ok(args) => {
-            println!("{:?}", args);
+        println!("{}", env::current_dir().unwrap().to_str().unwrap());
+        let mut path = env::current_dir().unwrap();
+        path.push("..");
+        println!("{:?}", path.canonicalize().unwrap());
+        println!("{:?}", get_my_home().unwrap().unwrap());
+    }
+
+    #[test]
+    fn test_spilt_input() {
+        let args = spilt_input("  echo 'hello    world' demo ni hao'nice to meet you' hxiao");
+        match args {
+            Ok(args) => {
+                println!("{:?}", args);
+            }
+            Err(err) => {
+                eprintln!("{}", err);
+            }
         }
-        Err(err) => {
-            eprintln!("{}", err);
+
+        let args = spilt_input("  echo hello'    'world");
+        match args {
+            Ok(args) => {
+                println!("{:?}", args);
+            }
+            Err(err) => {
+                eprintln!("{}", err);
+            }
+        }
+
+        let args = spilt_input("  echo hello''world");
+        match args {
+            Ok(args) => {
+                println!("{:?}", args);
+            }
+            Err(err) => {
+                eprintln!("{}", err);
+            }
+        }
+
+        let args = spilt_input("  echo 'hello''world'");
+        match args {
+            Ok(args) => {
+                println!("{:?}", args);
+            }
+            Err(err) => {
+                eprintln!("{}", err);
+            }
+        }
+
+        let args = spilt_input("  echo 'hello''world' | cat /tmp/aa > bb.txt | c");
+        match args {
+            Ok(args) => {
+                println!("{:?}", AstNode::try_from(args));
+            }
+            Err(err) => {
+                eprintln!("{}", err);
+            }
         }
     }
 
-    let args = spilt_input("  echo hello'    'world");
-    match args {
-        Ok(args) => {
-            println!("{:?}", args);
+    #[test]
+    fn test_spilt_output() -> anyhow::Result<()> {
+        let tests = vec![
+            ("  echo 'hello''world'", vec!["echo", "helloworld"]),
+            (
+                r#"echo "world  hello"  "test""shell""#,
+                vec!["echo", "world  hello", "testshell"],
+            ),
+            (
+                r#"echo world\ \ hello  test\nshello"#,
+                vec!["echo", "world  hello", "testnshello"],
+            ),
+            (
+                r#"echo "script'test'\\'shell""#,
+                vec!["echo", r#"script'test'\'shell"#],
+            ),
+            (
+                r#"echo "shell'world'\\'test""#,
+                vec!["echo", r#"shell'world'\'test"#],
+            ),
+            (
+                r#"echo "example\"insidequotes"shell\""#,
+                vec!["echo", r#"example"insidequotesshell""#],
+            ),
+        ];
+
+        for (i, (src, res)) in tests.iter().enumerate() {
+            print!("test {:02}--> {src} ", i + 1);
+            let r = spilt_input(src).unwrap();
+            // print!("{r:?}");
+            assert_eq!(
+                r,
+                res.iter().map(|s| s.to_string()).collect::<Vec<String>>()
+            );
+            println!("  passed");
         }
-        Err(err) => {
-            eprintln!("{}", err);
-        }
+
+        Ok(())
     }
 
-    let args = spilt_input("  echo hello''world");
-    match args {
-        Ok(args) => {
-            println!("{:?}", args);
+    #[test]
+    fn test_nix() -> anyhow::Result<()> {
+        use nix::fcntl::{open, OFlag};
+        use nix::sys::stat::Mode;
+        // ========== pipeline: 3 commands ==========
+        // echo hello > /tmp/test.out | cat /tmp/test.out 2> /tmp/out.err | wc
+
+        // ---------- pipe 1 ----------
+
+        let (p1_read, p1_write) = pipe()?;
+
+        match unsafe { fork()? } {
+            ForkResult::Child => {
+                // stdout -> pipe
+                dup2(p1_write, 1)?;
+                close(p1_read)?;
+                close(p1_write)?;
+
+                // > /tmp/test.out （覆盖 pipe）
+                let out = open(
+                    "/tmp/test.out",
+                    OFlag::O_CREAT | OFlag::O_WRONLY | OFlag::O_TRUNC,
+                    Mode::from_bits_truncate(0o644),
+                )?;
+                dup2(out, 1)?;
+                close(out)?;
+
+                execvp(c"echo", &[c"echo", c"hello"])?;
+                unreachable!();
+            }
+            ForkResult::Parent { .. } => {}
         }
-        Err(err) => {
-            eprintln!("{}", err);
+
+        close(p1_write)?;
+
+        // ---------- pipe 2 ----------
+        let (p2_read, p2_write) = pipe()?;
+
+        match unsafe { fork()? } {
+            ForkResult::Child => {
+                // stdin <- pipe1
+                dup2(p1_read, 0)?;
+                // stdout -> pipe2
+                dup2(p2_write, 1)?;
+
+                close(p1_read)?;
+                close(p2_read)?;
+                close(p2_write)?;
+
+                // 2> /tmp/out.err
+                let err = open(
+                    "/tmp/out.err",
+                    OFlag::O_CREAT | OFlag::O_WRONLY | OFlag::O_TRUNC,
+                    Mode::from_bits_truncate(0o644),
+                )?;
+                dup2(err, 2)?;
+                close(err)?;
+
+                env::set_current_dir("/tmp")?;
+                unreachable!();
+            }
+            ForkResult::Parent { .. } => {}
         }
+
+        close(p1_read)?;
+        close(p2_write)?;
+
+        // ---------- last command ----------
+        match unsafe { fork()? } {
+            ForkResult::Child => {
+                // stdin <- pipe2
+                dup2(p2_read, 0)?;
+                close(p2_read)?;
+
+                execvp(c"wc", &[c"wc"])?;
+                unreachable!();
+            }
+            ForkResult::Parent { .. } => {}
+        }
+
+        close(p2_read)?;
+
+        // ---------- wait ----------
+        for _ in 0..3 {
+            waitpid(None, None)?;
+        }
+
+        Ok(())
     }
 
-    let args = spilt_input("  echo 'hello''world'");
-    match args {
-        Ok(args) => {
-            println!("{:?}", args);
+    #[test]
+    fn test_pipe_with_cd() -> anyhow::Result<()> {
+        println!("{}", env::current_dir()?.to_str().unwrap());
+        // cd /tmp | pwd
+
+        let (p_read, p_write) = pipe()?;
+
+        match unsafe { fork()? } {
+            ForkResult::Parent { .. } => {}
+            ForkResult::Child => {
+                dup2(p_write, 1)?;
+                close(p_write)?;
+                close(p_read)?;
+                env::set_current_dir("/tmp")?;
+            }
         }
-        Err(err) => {
-            eprintln!("{}", err);
+        println!("{}", env::current_dir()?.to_str().unwrap());
+        match unsafe { fork()? } {
+            ForkResult::Parent { .. } => {}
+            ForkResult::Child => {
+                dup2(p_read, 0)?;
+                close(p_read)?;
+                close(p_write)?;
+                execvp(c"pwd", &[c"pwd"])?;
+            }
         }
-    }
 
-    let args = spilt_input("  echo 'hello''world' | cat /tmp/aa > bb.txt | c");
-    match args {
-        Ok(args) => {
-            println!("{:?}", AstNode::try_from(args));
+        for _ in 0..2 {
+            waitpid(None, None)?;
         }
-        Err(err) => {
-            eprintln!("{}", err);
-        }
+        println!("{}", env::current_dir()?.to_str().unwrap());
+
+        Ok(())
     }
-}
-
-#[test]
-fn test_spilt_output() -> Result<()> {
-    let tests = vec![
-        ("  echo 'hello''world'", vec!["echo", "helloworld"]),
-        (
-            r#"echo "world  hello"  "test""shell"#,
-            vec!["echo", "world  hello", "testshell"],
-        ),
-        (
-            r#"echo world\ \ hello  test\nshello"#,
-            vec!["echo", "world  hello", "testnshello"],
-        ),
-        (
-            r#"echo "script'test'\\'shell""#,
-            vec!["echo", r#"script'test'\'shell"#],
-        ),
-        (
-            r#"echo "shell'world'\\'test""#,
-            vec!["echo", r#"shell'world'\'test"#],
-        ),
-        (
-            r#"echo "example\"insidequotes"shell\""#,
-            vec!["echo", r#"example"insidequotesshell""#],
-        ),
-    ];
-
-    for (i, (src, res)) in tests.iter().enumerate() {
-        print!("test {:02}--> {src} ", i + 1);
-        let r = spilt_input(src).unwrap();
-        // print!("{r:?}");
-        assert_eq!(
-            r,
-            res.iter().map(|s| s.to_string()).collect::<Vec<String>>()
-        );
-        println!("  passed");
-    }
-
-    Ok(())
-}
-
-#[test]
-fn test_nix() -> Result<()> {
-    use nix::fcntl::{OFlag, open};
-    use nix::sys::stat::Mode;
-    // ========== pipeline: 3 commands ==========
-    // echo hello > /tmp/test.out | cat /tmp/test.out 2> /tmp/out.err | wc
-
-    // ---------- pipe 1 ----------
-
-    let (p1_read, p1_write) = pipe()?;
-
-    match unsafe { fork()? } {
-        ForkResult::Child => {
-            // stdout -> pipe
-            dup2(p1_write, 1)?;
-            close(p1_read)?;
-            close(p1_write)?;
-
-            // > /tmp/test.out （覆盖 pipe）
-            let out = open(
-                "/tmp/test.out",
-                OFlag::O_CREAT | OFlag::O_WRONLY | OFlag::O_TRUNC,
-                Mode::from_bits_truncate(0o644),
-            )?;
-            dup2(out, 1)?;
-            close(out)?;
-
-            execvp(c"echo", &[c"echo", c"hello"])?;
-            unreachable!();
-        }
-        ForkResult::Parent { .. } => {}
-    }
-
-    close(p1_write)?;
-
-    // ---------- pipe 2 ----------
-    let (p2_read, p2_write) = pipe()?;
-
-    match unsafe { fork()? } {
-        ForkResult::Child => {
-            // stdin <- pipe1
-            dup2(p1_read, 0)?;
-            // stdout -> pipe2
-            dup2(p2_write, 1)?;
-
-            close(p1_read)?;
-            close(p2_read)?;
-            close(p2_write)?;
-
-            // 2> /tmp/out.err
-            let err = open(
-                "/tmp/out.err",
-                OFlag::O_CREAT | OFlag::O_WRONLY | OFlag::O_TRUNC,
-                Mode::from_bits_truncate(0o644),
-            )?;
-            dup2(err, 2)?;
-            close(err)?;
-
-            env::set_current_dir("/tmp")?;
-            unreachable!();
-        }
-        ForkResult::Parent { .. } => {}
-    }
-
-    close(p1_read)?;
-    close(p2_write)?;
-
-    // ---------- last command ----------
-    match unsafe { fork()? } {
-        ForkResult::Child => {
-            // stdin <- pipe2
-            dup2(p2_read, 0)?;
-            close(p2_read)?;
-
-            execvp(c"wc", &[c"wc"])?;
-            unreachable!();
-        }
-        ForkResult::Parent { .. } => {}
-    }
-
-    close(p2_read)?;
-
-    // ---------- wait ----------
-    for _ in 0..3 {
-        waitpid(None, None)?;
-    }
-
-    Ok(())
-}
-
-#[test]
-fn test_pipe_with_cd() -> Result<()> {
-    println!("{}", env::current_dir()?.to_str().unwrap());
-    // cd /tmp | pwd
-
-    let (p_read, p_write) = pipe()?;
-
-    match unsafe { fork()? } {
-        ForkResult::Parent { .. } => {}
-        ForkResult::Child => {
-            dup2(p_write, 1)?;
-            close(p_write)?;
-            close(p_read)?;
-            env::set_current_dir("/tmp")?;
-        }
-    }
-    println!("{}", env::current_dir()?.to_str().unwrap());
-    match unsafe { fork()? } {
-        ForkResult::Parent { .. } => {}
-        ForkResult::Child => {
-            dup2(p_read, 0)?;
-            close(p_read)?;
-            close(p_write)?;
-            execvp(c"pwd", &[c"pwd"])?;
-        }
-    }
-
-    for _ in 0..2 {
-        waitpid(None, None)?;
-    }
-    println!("{}", env::current_dir()?.to_str().unwrap());
-
-    Ok(())
 }
