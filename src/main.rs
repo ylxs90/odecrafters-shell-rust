@@ -859,6 +859,19 @@ fn longest_common_prefix<T: AsRef<str>>(items: &[T]) -> String {
     prefix
 }
 
+struct ShellState {
+    history: History,
+    history_file: Option<PathBuf>,
+
+}
+
+struct History {
+    entries: Vec<String>,
+}
+
+
+
+
 #[derive(Debug, Default, Clone)]
 struct CommandSpec {
     argv: Vec<String>,
@@ -958,7 +971,6 @@ enum RedirectOp {
     Append,
 }
 
-#[allow(unused)]
 #[derive(Debug)]
 enum AstNode {
     Command(CommandSpec),
